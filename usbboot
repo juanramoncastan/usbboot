@@ -1,0 +1,286 @@
+#!/bin/bash -i
+
+
+
+FILE_ORIG=""
+FILE_SIZE=0
+DISK_DEST=""
+BLOCK_SIZE=4096
+declare -a DISKS
+declare -a UTIL_DISKS
+declare -a DISK_TREE
+IFS=$'\n'
+let N
+declare -a byte_unities=("Kb" "Mb" "Gb" "Tb" "Pb")
+
+IS_PV=$(which pv)
+
+COLOR_RED="\033[0;31m"
+COLOR_GREEN="\033[32m"
+BG_RED="\033[41m"
+COLOR_NONE="\033[0m" # No Color
+CURSOR_PLACE="\033[u"
+CURSOR_SAVE="\033[s"
+INICIO="\033[2J\033[0;0H"
+CLEAR_LINE="\033[K"
+
+
+function cursor_up ()
+{
+    echo -ne "\033[${1}F"
+}
+
+function look_for_disks ()
+{
+    DISKS=($(lsblk -b -l -o PATH,TYPE,RM,SIZE,MOUNTPOINT | sed -e '/^\/dev\/.\+[[:space:]]\+.\+disk[[:space:]]\+1/!d' -e 's/[[:space:]]\+/ /g' ))
+    N_DISKS=${#DISKS[@]}
+}
+
+function print_header ()
+{
+    echo -e "### USBboot ###"
+    echo
+}
+
+function check_iso_file()
+{
+    print_header
+    if [[ $1 != "" && -e $1 ]]
+    then
+        if [[ $( file -b --mime-type $1 | grep  "octet-stream\|iso9660") != "" ]]
+        then
+            FILE_ORIG="$1"
+            echo -e "Origin ISO file:\n  ~/$(realpath --relative-to=${HOME} $FILE_ORIG)"
+            FILE_SIZE=$(stat -c %s "$FILE_ORIG")
+            echo
+        else
+            echo -e "Error!"
+            echo -e "  \"$(basename $1)\"\nis not an ISO file."
+            exit 1
+        fi
+    else
+        echo -e "An ISO file is mandatory."
+        ask_for_file
+    fi
+}
+
+function ask_for_file ()
+{  
+    cd ${HOME}
+    echo -e "Select an ISO file: "
+    echo -ne "  ~/"
+    read -e  IN_FILE
+    IN_FILE="$(echo ${IN_FILE} | cut -d' ' -f1 )"
+    check_iso_file $IN_FILE
+}
+
+function check_sum()
+{
+    
+    local CHECK_FILE=$1
+    local CHECK_DISK=$2
+
+    echo -e "Checking SHA sums..."
+    if [[ $CHECK_DISK != "" &&  $CHECK_FILE != "" ]]
+    then
+        let FS=$( stat -c '%s' $CHECK_FILE)
+        if [[ $IS_PV = "" ]]
+        then
+            ST="progress"
+            COMMPV=""
+        else
+            ST="none"
+            COMMPV=" pv -s $FS | "
+        fi
+        
+        echo "  Getting SHA sum of $(basename $CHECK_FILE)"
+        SUM_FILE=$(sudo dd bs=$BLOCK_SIZE count=$(($FS / ${BLOCK_SIZE})) if=$CHECK_FILE status=${ST} | eval $COMMPV sha1sum | cut -d " " -f 1)
+        echo -e "  $SUM_FILE"
+        echo "  Getting SHA sum of $CHECK_DISK"
+        SUM_DISK=$(sudo dd bs=$BLOCK_SIZE count=$(($FS / ${BLOCK_SIZE})) if=$CHECK_DISK status=${ST} | eval $COMMPV sha1sum | cut -d " " -f 1)
+        echo -e "  $SUM_DISK"
+        echo
+        
+        if [[ $SUM_FILE = $SUM_DISK ]]
+        then
+            
+            echo "  Checking was OK."
+        else
+            echo "  Warning! SHA sum doesn't match"
+        fi
+    fi
+}
+
+
+function show_tree()
+{
+    echo -e "Available disks tree:"
+    if [[ $N_DISKS = 0 ]]
+    then
+        echo -e "  None"
+    else
+        lsblk -e11,7 -o RM,NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT | sed -e '/^[[:space:]]\+1[[:space:]].\+/!d' -e 's/^[[:space:]]\+1[[:space:]]\(.\+\)/ \1/g'
+        echo
+        show_disks
+    fi
+    
+}
+
+
+function show_disks()
+{
+
+    local DISK
+    local DEV=""
+    local SIZE=""
+    DISK_DEST=""
+    N=0
+    
+    echo -e "List of available disks."
+    for DISK in "${DISKS[@]}"
+    do
+        DEV=$(echo $DISK | cut -d " " -f 1)
+        SIZE=$(echo $DISK | cut -d " " -f 4)
+        MP="$(echo $DISK | cut -d " " -f 5)"
+        let M=$M+1
+        if (( $SIZE <= $FILE_SIZE ))
+        then
+            echo -e "${COLOR_RED}  *  ${DEV}    $(human_readable $SIZE)${COLOR_NONE}"
+        else
+            UTIL_DISKS[${N}]="${DEV} disk 1 ${SIZE}"
+            let N=$N+1
+            echo -ne "  "
+            echo -e "${COLOR_GREEN}(${N}) $DEV    $(human_readable $SIZE)${COLOR_NONE}"
+        fi
+    done
+    echo
+}
+
+
+
+
+
+function input_command ()
+{
+    if [[ $DISK_DEST = "" ]]
+    then
+        local IN=0
+        echo -ne "$CURSOR_SAVE"
+        while true
+        do
+            
+            echo -e "  (r) Reload."
+            echo -en "  (e) Exit."
+            if (( $N_DISKS > 0 ))
+            then
+                local DN=1
+                if (( $N_DISKS > 1 ))
+                then
+                    for I in $(seq 2 ${N_DISKS})
+                    do
+                        DN=${DN}"/${I}"
+                    done
+                fi
+                echo
+                if [[ $N_DISKS = 1 ]]
+                then
+                    echo -e "  (${DN}) Only one disk is available. "
+                else
+                    echo -e "  (${DN}) Disk number. "
+                fi
+            fi
+            echo
+            read -sn1 -p "Press a key: " IN
+            if [[ $IN =~ ^[Rr]$ ]] ; then
+                    echo -ne "$INICIO"
+                    check_iso_file $FILE_ORIG
+                    look_for_disks
+                    show_tree
+            elif [[ $IN =~ ^[Ee]$ ]] ; then
+                exit 0
+            elif [[ $IN =~ ^[1-${N_DISKS}]+$ ]] ; then
+                echo
+                DISK_DEST=$( echo -e ${UTIL_DISKS[${IN}-1]} | cut -d " " -f 1 )
+                echo "Selected disk: ${DISK_DEST}"
+                write_to_disk $FILE_ORIG $DISK_DEST
+                break
+            else
+                #echo -ne "$CURSOR_PLACE"
+                cursor_up 4
+            fi
+        done
+    fi
+}
+
+
+function write_to_disk ()
+{
+    echo
+    local IN=""
+    let FS=$(stat -c '%s' $1)
+    if [[ $IS_PV = "" ]]
+    then
+        ST="progress"
+        COMMPV=""
+    else
+        ST="none"
+        COMMPV=" pv -s $FS | "
+    fi
+            echo -ne "$INICIO"
+        print_header
+        echo -e "Writting \"$(basename ${1})\" into \"${2}\" disk."
+        echo -e "  This action requieres \"root\" premissions,"
+        echo -e "  it will ask you for password."
+        echo -e "  ${BG_RED}This action will erase all data on this disk.${COLOR_NONE}"
+    while true
+    do
+        echo -ne "$CURSOR_SAVE"
+        echo -ne "  Are you sure you want to go ahead? (y/N): "
+        read -sn1 IN
+        if [[ $IN =~ ^[Yy]$ ]]
+        then
+            echo
+            echo
+            sudo echo -e "Writting..."
+            #sudo dd if="${1}" bs=${BLOCK_SIZE} | eval $COMMPV sudo dd of="${2}" bs=${BLOCK_SIZE}  oflag=direct status=${ST} && \
+            echo -e "  ...disk writting completed." || \
+            echo -e "  ...there was a problem!"
+            echo
+            check_sum $1 $2
+            exit 0
+        elif [[ $IN =~ ^[Nn]$ ]] || [[ $IN = "" ]]
+        then
+            echo -ne "$INICIO"
+            check_iso_file $FILE_ORIG
+            look_for_disks
+            show_tree
+            input_command
+            break
+        fi
+        echo -ne "$CURSOR_PLACE"
+    done
+}
+
+function human_readable ()
+{
+    local VAL=$1
+    local R=0
+    while [[ 1 -eq $(echo "$VAL > 1024.00" | bc ) ]]
+    do
+        VAL=$( echo "scale=2 ; $VAL / 1024" | bc )
+        let R=$R+1
+    done
+    echo $VAL  ${byte_unities[$R]}
+}
+
+echo -ne "$INICIO"
+
+check_iso_file $1
+look_for_disks
+show_tree
+input_command
+
+exit 0
+
+
+
