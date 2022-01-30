@@ -25,12 +25,12 @@ INICIO="\033[2J\033[0;0H"
 CLEAR_LINE="\033[K"
 
 
-function cursor_up ()
+function cursor_up
 {
     echo -ne "\033[${1}F"
 }
 
-function look_for_disks ()
+function look_for_disks 
 {
     DISKS=($(lsblk -b -l -o PATH,TYPE,RM,SIZE,MOUNTPOINT | sed -e '/^\/dev\/.\+[[:space:]]\+.\+disk[[:space:]]\+1/!d' -e 's/[[:space:]]\+/ /g' ))
     N_DISKS=${#DISKS[@]}
@@ -42,21 +42,28 @@ function print_header ()
     echo
 }
 
-function check_iso_file()
+function check_iso_file
 {
+    echo -ne "$INICIO"
     print_header
-    if [[ $1 != "" && -e $1 ]]
+    if [[ $1 != "" ]] 
     then
-        if [[ $( file -b --mime-type $1 | grep  "octet-stream\|iso9660") != "" ]]
+        if [[ -e "$1" ]] 
         then
-            FILE_ORIG="$1"
-            echo -e "Origin ISO file:\n  ~/$(realpath --relative-to=${HOME} $FILE_ORIG)"
-            FILE_SIZE=$(stat -c %s "$FILE_ORIG")
-            echo
+            if [[ $( file -b --mime-type $1 | grep  "octet-stream\|iso9660") != "" ]]
+            then
+                FILE_ORIG="$1"
+                echo -e "Origin ISO file:\n  ~/$(realpath --relative-to=${HOME} $FILE_ORIG)"
+                FILE_SIZE=$(stat -c %s "$FILE_ORIG")
+                echo
+            else
+                echo -e "Error!"
+                echo -e "  \"$(basename $1)\"\nis not an ISO file."
+                exit 1
+            fi
         else
-            echo -e "Error!"
-            echo -e "  \"$(basename $1)\"\nis not an ISO file."
-            exit 1
+            echo -e "The file \"${1}\" doesn't exist."
+            ask_for_file
         fi
     else
         echo -e "An ISO file is mandatory."
@@ -64,17 +71,17 @@ function check_iso_file()
     fi
 }
 
-function ask_for_file ()
+function ask_for_file
 {  
     cd ${HOME}
     echo -e "Select an ISO file: "
     echo -ne "  ~/"
-    read -e  IN_FILE
-    IN_FILE="$(echo ${IN_FILE} | cut -d' ' -f1 )"
-    check_iso_file $IN_FILE
+    read -e IN_FILE
+    IN_FILE="$(echo ${IN_FILE} | sed -e "s/[[:space:]]$//")"
+    check_iso_file "$IN_FILE"
 }
 
-function check_sum()
+function check_sum
 {
     
     local CHECK_FILE=$1
@@ -94,13 +101,13 @@ function check_sum()
         fi
         
         echo "  Getting SHA sum of $(basename $CHECK_FILE)"
-        SUM_FILE=$(sudo dd bs=$BLOCK_SIZE count=$(($FS / ${BLOCK_SIZE})) if=$CHECK_FILE status=${ST} | eval $COMMPV sha1sum | cut -d " " -f 1)
+        SUM_FILE=$( sudo dd bs=$BLOCK_SIZE count=$(($FS / ${BLOCK_SIZE})) if=$CHECK_FILE status=${ST} | eval $COMMPV sha1sum | cut -d " " -f 1 ) 
         echo -e "  $SUM_FILE"
         echo "  Getting SHA sum of $CHECK_DISK"
-        SUM_DISK=$(sudo dd bs=$BLOCK_SIZE count=$(($FS / ${BLOCK_SIZE})) if=$CHECK_DISK status=${ST} | eval $COMMPV sha1sum | cut -d " " -f 1)
+        SUM_DISK=$( sudo dd bs=$BLOCK_SIZE count=$(($FS / ${BLOCK_SIZE})) if=$CHECK_DISK status=${ST} | eval $COMMPV sha1sum | cut -d " " -f 1 )
         echo -e "  $SUM_DISK"
-        echo
         
+        echo
         if [[ $SUM_FILE = $SUM_DISK ]]
         then
             
@@ -112,12 +119,14 @@ function check_sum()
 }
 
 
-function show_tree()
+function show_tree
 {
+    
     echo -e "Available disks tree:"
     if [[ $N_DISKS = 0 ]]
     then
         echo -e "  None"
+        echo
     else
         lsblk -e11,7 -o RM,NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT | sed -e '/^[[:space:]]\+1[[:space:]].\+/!d' -e 's/^[[:space:]]\+1[[:space:]]\(.\+\)/ \1/g'
         echo
@@ -127,7 +136,7 @@ function show_tree()
 }
 
 
-function show_disks()
+function show_disks
 {
 
     local DISK
@@ -160,7 +169,7 @@ function show_disks()
 
 
 
-function input_command ()
+function input_command
 {
     if [[ $DISK_DEST = "" ]]
     then
@@ -168,9 +177,8 @@ function input_command ()
         echo -ne "$CURSOR_SAVE"
         while true
         do
-            
             echo -e "  (r) Reload."
-            echo -en "  (e) Exit."
+            echo -e "  (e) Exit."
             if (( $N_DISKS > 0 ))
             then
                 local DN=1
@@ -181,22 +189,24 @@ function input_command ()
                         DN=${DN}"/${I}"
                     done
                 fi
-                echo
                 if [[ $N_DISKS = 1 ]]
                 then
                     echo -e "  (${DN}) Only one disk is available. "
                 else
                     echo -e "  (${DN}) Disk number. "
                 fi
+            else
+                 echo -e "  No are no USB disks . "
             fi
             echo
             read -sn1 -p "Press a key: " IN
             if [[ $IN =~ ^[Rr]$ ]] ; then
-                    echo -ne "$INICIO"
-                    check_iso_file $FILE_ORIG
-                    look_for_disks
-                    show_tree
+                echo -ne "$INICIO"
+                check_iso_file $FILE_ORIG
+                look_for_disks
+                show_tree
             elif [[ $IN =~ ^[Ee]$ ]] ; then
+                echo
                 exit 0
             elif [[ $IN =~ ^[1-${N_DISKS}]+$ ]] ; then
                 echo
@@ -213,12 +223,13 @@ function input_command ()
 }
 
 
-function write_to_disk ()
+function write_to_disk
 {
     echo
     local IN=""
     let FS=$(stat -c '%s' $1)
     if [[ $IS_PV = "" ]]
+    
     then
         ST="progress"
         COMMPV=""
@@ -239,11 +250,16 @@ function write_to_disk ()
         read -sn1 IN
         if [[ $IN =~ ^[Yy]$ ]]
         then
+            for n in $(ls -1 ${1}*)
+            do
+                echo "Desmontando $n"
+            done
             echo
             echo
-            sudo echo -e "Writting..."
-            #sudo dd if="${1}" bs=${BLOCK_SIZE} | eval $COMMPV sudo dd of="${2}" bs=${BLOCK_SIZE}  oflag=direct status=${ST} && \
-            echo -e "  ...disk writting completed." || \
+            sudo echo -e "Writting disk..."
+            echo "Block $BLOCK_SIZE"
+            sudo dd if="${1}" bs=${BLOCK_SIZE} | eval $COMMPV sudo dd of="${2}" bs=${BLOCK_SIZE}  oflag=direct status=${ST} && \
+            echo -e "  ...completed." || \
             echo -e "  ...there was a problem!"
             echo
             check_sum $1 $2
@@ -261,7 +277,7 @@ function write_to_disk ()
     done
 }
 
-function human_readable ()
+function human_readable
 {
     local VAL=$1
     local R=0
@@ -273,12 +289,96 @@ function human_readable ()
     echo $VAL  ${byte_unities[$R]}
 }
 
-echo -ne "$INICIO"
+function byte_multiplier
+{
+    local BASE=$(echo $1 | sed -e "s/\(^[[:digit:]]\+\)[[:alpha:]]/\1/")
+    local UNIT=$(echo $1 | sed -e "s/^[[:digit:]]\+\([[:alpha:]]\)/\1/")
+    local TOTAL=$BASE
+    if (( $BASE > 0 )) && [[ $BASE =~ ^[0-9]+$ ]]
+    then
+        if [[ $UNIT = "k" ]]
+        then
+            TOTAL=$(echo " ${BASE} * 1024 " | bc)
+        elif [[ $UNIT = "M" ]]
+        then
+            TOTAL=$(echo " ${BASE} * 1024 * 1024 " | bc)
+        elif [[ $UNIT = "G" ]]
+        then
+            TOTAL=$(echo " ${BASE} * 1024 * 1024 * 1024 " | bc)
+        elif [[ $UNIT != "" ]]
+        then
+            echo -e "Error with\"-b\" option."
+            echo "  \"$UNIT\" is not a byte unity."
+            echo "  Valid unities are k, M, G."
+            return 1
+        fi
+    else
+        echo -e "Error with\"-b\" option."
+        echo "  \"$BASE\" is a wrong value."
+        return 1
+    fi
+    BLOCK_SIZE=$TOTAL
+}
 
-check_iso_file $1
-look_for_disks
-show_tree
-input_command
+function help_message
+{
+    echo -e 
+    echo -e "Description: Bash script to create bootable USB."
+    echo -e "Usage:"
+    echo -e "  usbboot [-h][-b BYTES] file"
+    echo
+    echo -e "'file' must be a bootable ISO file"
+    echo -e "Options:"
+    echo -e "  -b  Block size in bytes (512, 1024, 2048, 4k, 32k 1M, etc.)"
+    echo -e "  -h  Shows this message."
+    echo
+}
+
+function error_opt_missing
+{
+    echo -e "Option " $1 "requires an argument"
+}
+
+
+OPTIONS=$(getopt  -o "hb:" -n '$0' -- "$@")
+
+if [ $? != 0 ] ; then
+  exit 1 ;
+fi
+
+
+eval set -- "$OPTIONS"
+
+while true ; do
+    case $1 in 
+            -b)
+                if [[ $2 =~ ^-[kg]$ ]] ; then
+                    error_opt_missing $1 
+                    exit 1
+                else
+                    byte_multiplier $2 || exit 1
+                    #echo $BLOCK_SIZE
+                    shift 2
+                fi
+                ;;
+            -h)
+                help_message
+                exit 0
+                ;;
+            --)
+                shift
+                check_iso_file "$1"
+                look_for_disks
+                show_tree
+                input_command
+                break
+                ;;
+            *)
+                
+                exit 1
+                ;;
+    esac
+done
 
 exit 0
 
