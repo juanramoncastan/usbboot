@@ -1,6 +1,6 @@
-#!/bin/bash -i
+#!/bin/bash -i 
 
-
+#/bin/bash
 
 FILE_ORIG=""
 FILE_SIZE=0
@@ -139,7 +139,6 @@ function show_tree
 
 function show_disks
 {
-
     local DISK
     local DEV=""
     local SIZE=""
@@ -164,11 +163,8 @@ function show_disks
         fi
     done
     echo
+    input_command
 }
-
-
-
-
 
 function input_command
 {
@@ -230,7 +226,6 @@ function write_to_disk
     local IN=""
     let FS=$(stat -c '%s' $1)
     if [[ $IS_PV = "" ]]
-    
     then
         ST="progress"
         COMMPV=""
@@ -238,13 +233,14 @@ function write_to_disk
         ST="none"
         COMMPV=" pv -s $FS | "
     fi
-            echo -ne "$INICIO"
-        print_header
-        echo -e "Some actions might requiere \"root\" privileges,"
-        echo -e "it will ask you for password."
-        echo
-        echo -e "Chech SHA sum or write: "
-        echo -e "  \"$(basename ${1})\" against \"${2}\"."
+    
+    echo -ne "$INICIO"
+    print_header
+    echo -e "Some actions might requiere \"root\" privileges,"
+    echo -e "it will ask you for password."
+    echo
+    echo -e "Chech SHA sum or write: "
+    echo -e "  \"$(basename ${1})\" against \"${2}\"."
     while true
     do
         echo -ne "$CURSOR_SAVE"
@@ -275,7 +271,7 @@ function write_to_disk
                     echo
                     sudo echo -e "Writting disk..."
                     echo "Block $BLOCK_SIZE"
-                    #sudo dd if="${1}" bs=${BLOCK_SIZE} | eval $COMMPV sudo dd of="${2}" bs=${BLOCK_SIZE}  oflag=direct status=${ST} && \
+                    sudo dd if="${1}" bs=${BLOCK_SIZE} | eval $COMMPV sudo dd of="${2}" bs=${BLOCK_SIZE}  oflag=direct status=${ST} && \
                     echo -e "  ...completed." || \
                     echo -e "  ...there was a problem!"
                     echo
@@ -287,7 +283,7 @@ function write_to_disk
                     check_iso_file $FILE_ORIG
                     look_for_disks
                     show_tree
-                    input_command
+                    #input_command
                     break
                 fi
             echo -ne "$CURSOR_PLACE"
@@ -301,7 +297,7 @@ function write_to_disk
             check_iso_file $FILE_ORIG
             look_for_disks
             show_tree
-            input_command
+            #input_command
             break
             break
         elif [[ $IN =~ ^[Bb]$ ]]
@@ -310,7 +306,7 @@ function write_to_disk
             check_iso_file $FILE_ORIG
             look_for_disks
             show_tree
-            input_command
+            #input_command
             break
         elif [[ $IN =~ ^[Ee]$ ]]
         then
@@ -335,12 +331,13 @@ function human_readable
 
 function byte_multiplier
 {
-    local BASE=$(echo $1 | sed -e "s/\(^[[:digit:]]\+\)[[:alpha:]]/\1/")
-    local UNIT=$(echo $1 | sed -e "s/^[[:digit:]]\+\([[:alpha:]]\)/\1/")
+
+    local BASE=$(echo $1 | sed -e "s/\(^[[:digit:]]\+\)[[:alpha:]]*/\1/")
+    local UNIT=$(echo $1 | sed -e "s/^[[:digit:]]\+\([[:alpha:]]*\)/\1/")
     local TOTAL=$BASE
-    if (( $BASE > 0 )) && [[ $BASE =~ ^[0-9]+$ ]]
+    if (( $BASE > 0 )) && [[ $BASE =~ ^[0-9]+ ]]
     then
-        if [[ $UNIT = "k" ]]
+        if [[ $UNIT =~ ^[Kk]$ ]]
         then
             TOTAL=$(echo " ${BASE} * 1024 " | bc)
         elif [[ $UNIT = "M" ]]
@@ -352,8 +349,8 @@ function byte_multiplier
         elif [[ $UNIT != "" ]]
         then
             echo -e "Error with\"-b\" option."
-            echo "  \"$UNIT\" is not a byte unity."
-            echo "  Valid unities are k, M, G."
+            echo -e "  \"$UNIT\" is not a byte unity."
+            echo -e "  Valid unities are k, M, G."
             return 1
         fi
     else
@@ -369,9 +366,9 @@ function help_message
     echo -e 
     echo -e "Description: Bash script to create bootable USB."
     echo -e "Usage:"
-    echo -e "  usbboot [-h][-b BYTES] file"
+    echo -e "  usbboot [-h][-b BYTES] 'file'"
     echo
-    echo -e "'file' must be a bootable ISO file"
+    echo -e "...where 'file' must be a bootable ISO file"
     echo -e "Options:"
     echo -e "  -b  Block size in bytes (512, 1024, 2048, 4k, 32k 1M, etc.)"
     echo -e "  -h  Shows this message."
@@ -383,25 +380,25 @@ function error_opt_missing
     echo -e "Option " $1 "requires an argument"
 }
 
-
 OPTIONS=$(getopt  -o "hb:" -n '$0' -- "$@")
 
 if [ $? != 0 ] ; then
   exit 1 ;
 fi
 
-
 eval set -- "$OPTIONS"
 
 while true ; do
     case $1 in 
             -b)
-                if [[ $2 =~ ^-[kg]$ ]] ; then
+                
+                if [[ $2 =~ ^-[h-]$ ]]
+                then
                     error_opt_missing $1 
+                    shift
                     exit 1
                 else
                     byte_multiplier $2 || exit 1
-                    #echo $BLOCK_SIZE
                     shift 2
                 fi
                 ;;
@@ -414,11 +411,9 @@ while true ; do
                 check_iso_file "$1"
                 look_for_disks
                 show_tree
-                input_command
                 break
                 ;;
             *)
-                
                 exit 1
                 ;;
     esac
