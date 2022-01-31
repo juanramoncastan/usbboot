@@ -87,6 +87,7 @@ function check_sum
     local CHECK_FILE=$1
     local CHECK_DISK=$2
 
+    echo
     echo -e "Checking SHA sums..."
     if [[ $CHECK_DISK != "" &&  $CHECK_FILE != "" ]]
     then
@@ -239,32 +240,71 @@ function write_to_disk
     fi
             echo -ne "$INICIO"
         print_header
-        echo -e "Writting \"$(basename ${1})\" into \"${2}\" disk."
-        echo -e "  This action requieres \"root\" premissions,"
-        echo -e "  it will ask you for password."
-        echo -e "  ${BG_RED}This action will erase all data on this disk.${COLOR_NONE}"
+        echo -e "Some actions might requiere \"root\" privileges,"
+        echo -e "it will ask you for password."
+        echo
+        echo -e "Chech SHA sum or write: "
+        echo -e "  \"$(basename ${1})\" against \"${2}\"."
     while true
     do
         echo -ne "$CURSOR_SAVE"
-        echo -ne "  Are you sure you want to go ahead? (y/N): "
-        read -sn1 IN
-        if [[ $IN =~ ^[Yy]$ ]]
+        echo
+        echo -e "  (e) Exit."
+        echo -e "  (b) Back."
+        echo -e "  (c) Check SHA sum."
+        echo -e "  (w) Write disk (it will ask your confirmation)."
+        echo
+        read -sn1 -p "Press a key: " IN
+        if [[ $IN =~ ^[Ww]$ ]]
         then
-            for n in $(ls -1 ${1}*)
+            while true
             do
-                echo "Desmontando $n"
+                echo -ne "$CURSOR_SAVE"
+                IN=""
+                echo
+                for n in $(ls -1 ${1}*)
+                do
+                    echo "Desmontando $n"
+                done
+                echo -e "  ${BG_RED}Writting action will erase all data on this disk.${COLOR_NONE}"
+                echo -ne "  Are you sure you want to go ahead? (y/N): "
+                read -sn1 IN
+                if [[ $IN =~ ^[Yy]$ ]]
+                then
+                    echo
+                    echo
+                    sudo echo -e "Writting disk..."
+                    echo "Block $BLOCK_SIZE"
+                    #sudo dd if="${1}" bs=${BLOCK_SIZE} | eval $COMMPV sudo dd of="${2}" bs=${BLOCK_SIZE}  oflag=direct status=${ST} && \
+                    echo -e "  ...completed." || \
+                    echo -e "  ...there was a problem!"
+                    echo
+                    check_sum $1 $2
+                    exit 0
+                elif [[ $IN =~ ^[Nn]$ ]] || [[ $IN = "" ]]
+                then
+                    echo -ne "$INICIO"
+                    check_iso_file $FILE_ORIG
+                    look_for_disks
+                    show_tree
+                    input_command
+                    break
+                fi
+            echo -ne "$CURSOR_PLACE"
             done
-            echo
-            echo
-            sudo echo -e "Writting disk..."
-            echo "Block $BLOCK_SIZE"
-            sudo dd if="${1}" bs=${BLOCK_SIZE} | eval $COMMPV sudo dd of="${2}" bs=${BLOCK_SIZE}  oflag=direct status=${ST} && \
-            echo -e "  ...completed." || \
-            echo -e "  ...there was a problem!"
-            echo
+        elif [[ $IN =~ ^[Cc]$ ]]
+        then
+            sudo echo "" 
             check_sum $1 $2
-            exit 0
-        elif [[ $IN =~ ^[Nn]$ ]] || [[ $IN = "" ]]
+            read -n1 -p "Press enter."
+            echo -ne "$INICIO"
+            check_iso_file $FILE_ORIG
+            look_for_disks
+            show_tree
+            input_command
+            break
+            break
+        elif [[ $IN =~ ^[Bb]$ ]]
         then
             echo -ne "$INICIO"
             check_iso_file $FILE_ORIG
@@ -272,6 +312,10 @@ function write_to_disk
             show_tree
             input_command
             break
+        elif [[ $IN =~ ^[Ee]$ ]]
+        then
+            echo
+            exit 0
         fi
         echo -ne "$CURSOR_PLACE"
     done
